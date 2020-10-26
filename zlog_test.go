@@ -1,6 +1,7 @@
 package zlog
 
 import (
+	"context"
 	"testing"
 
 	"go.opentelemetry.io/otel"
@@ -39,4 +40,12 @@ func TestSub(t *testing.T) {
 		ctx = otel.ContextWithBaggageValues(ctx, label.String("inner", "b"))
 		Log(ctx).Msg("hello")
 	})
+}
+
+func Example() {
+	ctx := context.Background()
+	ctx = otel.ContextWithBaggageValues(ctx, label.String("key", "value1"))
+	Log(ctx).Msg("message")
+	ctx = otel.ContextWithBaggageValues(ctx, label.String("key", "value2"))
+	Log(ctx).Msg("message")
 }
