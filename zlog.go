@@ -13,9 +13,8 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/api/correlation"
-	"go.opentelemetry.io/otel/api/kv"
-	"go.opentelemetry.io/otel/api/kv/value"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/label"
 )
 
 // AddCtx is the workhorse function that every facade function calls.
@@ -27,27 +26,29 @@ func addCtx(ctx context.Context, ev *zerolog.Event) *zerolog.Event {
 		return ev
 	}
 
-	correlation.MapFromContext(ctx).Foreach(func(kv kv.KeyValue) bool {
+	s := otel.Baggage(ctx)
+	for i := s.Iter(); i.Next(); {
+		kv := i.Label()
 		k := string(kv.Key)
 		v := kv.Value
 		switch v.Type() {
-		case value.BOOL:
+		case label.BOOL:
 			ev.Bool(k, v.AsBool())
-		case value.INT32:
+		case label.INT32:
 			ev.Int32(k, v.AsInt32())
-		case value.INT64:
+		case label.INT64:
 			ev.Int64(k, v.AsInt64())
-		case value.UINT32:
+		case label.UINT32:
 			ev.Uint32(k, v.AsUint32())
-		case value.UINT64:
+		case label.UINT64:
 			ev.Uint64(k, v.AsUint64())
-		case value.FLOAT32:
+		case label.FLOAT32:
 			ev.Float32(k, v.AsFloat32())
-		case value.FLOAT64:
+		case label.FLOAT64:
 			ev.Float64(k, v.AsFloat64())
-		case value.STRING:
+		case label.STRING:
 			ev.Str(k, v.AsString())
-		case value.ARRAY:
+		case label.ARRAY:
 			za := zerolog.Arr()
 			switch a := v.AsArray().(type) {
 			case []bool:
@@ -93,8 +94,8 @@ func addCtx(ctx context.Context, ev *zerolog.Event) *zerolog.Event {
 			}
 			ev.Array(k, za)
 		}
-		return true
-	})
+	}
+
 	return ev
 }
 

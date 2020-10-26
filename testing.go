@@ -11,20 +11,20 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel/api/correlation"
-	"go.opentelemetry.io/otel/api/kv"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/label"
 )
 
 var (
 	setup    sync.Once
 	sink     logsink
-	testName = kv.Key("zlog.testname")
+	testName = label.Key("zlog.testname")
 )
 
 // Test configures and wires up the global logger for testing.
 //
-// Log messages that do not use from a Context returned by this function will
-// cause a panic.
+// Once called, log messages that do not use a Context returned by a call to
+// Test will cause a panic.
 //
 // Passing a nil Context will return a Context derived from context.Background.
 func Test(ctx context.Context, t testing.TB) context.Context {
@@ -37,7 +37,7 @@ func Test(ctx context.Context, t testing.TB) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return correlation.NewContext(ctx, testName.String(t.Name()))
+	return otel.ContextWithBaggageValues(ctx, testName.String(t.Name()))
 }
 
 // Logsink holds the files and does the routing for log messages.
