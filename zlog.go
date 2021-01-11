@@ -13,20 +13,20 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/label"
 )
 
 // AddCtx is the workhorse function that every facade function calls.
 //
-// If the passed Event is enabled, it will attach all the otel correlations to
+// If the passed Event is enabled, it will attach all the otel baggage to
 // it and return it.
 func addCtx(ctx context.Context, ev *zerolog.Event) *zerolog.Event {
 	if !ev.Enabled() {
 		return ev
 	}
 
-	s := otel.Baggage(ctx)
+	s := baggage.Set(ctx)
 	for i := s.Iter(); i.Next(); {
 		kv := i.Label()
 		k := string(kv.Key)

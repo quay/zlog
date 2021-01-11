@@ -11,7 +11,7 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/label"
 )
 
@@ -37,7 +37,7 @@ func Test(ctx context.Context, t testing.TB) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return otel.ContextWithBaggageValues(ctx, testName.String(t.Name()))
+	return baggage.ContextWithValues(ctx, testName.String(t.Name()))
 }
 
 // Logsink holds the files and does the routing for log messages.
