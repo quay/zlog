@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/label"
 )
@@ -46,7 +45,7 @@ type logsink struct {
 	ts map[string]testing.TB
 }
 
-// Setup configures the logsink and configures the global zerolog logger.
+// Setup configures the logsink and configures the logger.
 func (s *logsink) Setup() {
 	s.ts = make(map[string]testing.TB)
 
@@ -55,7 +54,8 @@ func (s *logsink) Setup() {
 	zerolog.CallerMarshalFunc = func(file string, line int) string {
 		return filepath.Base(file) + ":" + strconv.Itoa(line)
 	}
-	log.Logger = zerolog.New(s).With().Caller().Logger()
+	l := zerolog.New(s).With().Caller().Logger()
+	Set(&l)
 }
 
 // Create initializes a new log stream.

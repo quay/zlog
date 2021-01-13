@@ -1,9 +1,9 @@
 // Package zlog is a logging facade backed by zerolog.
 //
-// It uses opentelemetry correlations to generate log contexts.
+// It uses opentelemetry baggage to generate log contexts.
 //
-// The package wraps the zerolog global logger, so an application's main should
-// do configuration there.
+// By default, the package wraps the zerolog global logger. This can be changed
+// via the Set function.
 //
 // In addition, a testing adapter is provided to keep testing logs orderly.
 package zlog
@@ -12,10 +12,21 @@ import (
 	"context"
 
 	"github.com/rs/zerolog"
-	"github.com/rs/zerolog/log"
+	global "github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/label"
 )
+
+// Log is the logger used by the package-level functions.
+var log = &global.Logger
+
+// Set configures the logger used by this package.
+//
+// This function is unsafe to use concurrently with the other functions of this
+// package.
+func Set(l *zerolog.Logger) {
+	log = l
+}
 
 // AddCtx is the workhorse function that every facade function calls.
 //
