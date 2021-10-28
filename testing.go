@@ -11,13 +11,15 @@ import (
 
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/baggage"
-	"go.opentelemetry.io/otel/label"
+)
+
+const (
+	testNameKey = "zlog.testname"
 )
 
 var (
-	setup    sync.Once
-	sink     logsink
-	testName = label.Key("zlog.testname")
+	setup sync.Once
+	sink  logsink
 )
 
 // Test configures and wires up the global logger for testing.
@@ -36,7 +38,9 @@ func Test(ctx context.Context, t testing.TB) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	return baggage.ContextWithValues(ctx, testName.String(t.Name()))
+	m, _ := baggage.NewMember(testNameKey, t.Name())
+	b, _ := baggage.FromContext(ctx).SetMember(m)
+	return baggage.ContextWithBaggage(ctx, b)
 }
 
 // Logsink holds the files and does the routing for log messages.

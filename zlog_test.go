@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"go.opentelemetry.io/otel/baggage"
-	"go.opentelemetry.io/otel/label"
 )
 
 func TestTestHarness(t *testing.T) {
@@ -18,10 +17,14 @@ func TestTestHarness(t *testing.T) {
 func TestDeduplication(t *testing.T) {
 	ctx := Test(nil, t)
 	t.Log("make sure keys aren't repeated")
-	ctx = baggage.ContextWithValues(ctx, label.Int("x", 5))
+	m, _ := baggage.NewMember("x", "5")
+	b, _ := baggage.FromContext(ctx).SetMember(m)
+	ctx = baggage.ContextWithBaggage(ctx, b)
 	Log(ctx).Msg("5?")
 	t.Log("should be 5")
-	ctx = baggage.ContextWithValues(ctx, label.Int("x", 6))
+	m, _ = baggage.NewMember("x", "6")
+	b, _ = baggage.FromContext(ctx).SetMember(m)
+	ctx = baggage.ContextWithBaggage(ctx, b)
 	Log(ctx).Msg("6?")
 	t.Log("should be 6")
 }
@@ -29,23 +32,33 @@ func TestDeduplication(t *testing.T) {
 func TestSub(t *testing.T) {
 	ctx := Test(nil, t)
 	t.Log("make sure subtests are intelligible")
-	ctx = baggage.ContextWithValues(ctx, label.String("outer", "test"))
+	m, _ := baggage.NewMember("outer", "test")
+	b, _ := baggage.FromContext(ctx).SetMember(m)
+	ctx = baggage.ContextWithBaggage(ctx, b)
 	t.Run("a", func(t *testing.T) {
 		ctx := Test(ctx, t)
-		ctx = baggage.ContextWithValues(ctx, label.String("inner", "a"))
+		m, _ := baggage.NewMember("inner", "a")
+		b, _ := baggage.FromContext(ctx).SetMember(m)
+		ctx = baggage.ContextWithBaggage(ctx, b)
 		Log(ctx).Msg("hello")
 	})
 	t.Run("b", func(t *testing.T) {
 		ctx := Test(ctx, t)
-		ctx = baggage.ContextWithValues(ctx, label.String("inner", "b"))
+		m, _ := baggage.NewMember("inner", "b")
+		b, _ := baggage.FromContext(ctx).SetMember(m)
+		ctx = baggage.ContextWithBaggage(ctx, b)
 		Log(ctx).Msg("hello")
 	})
 }
 
 func Example() {
 	ctx := context.Background()
-	ctx = baggage.ContextWithValues(ctx, label.String("key", "value1"))
+	m, _ := baggage.NewMember("key", "value1")
+	b, _ := baggage.FromContext(ctx).SetMember(m)
+	ctx = baggage.ContextWithBaggage(ctx, b)
 	Log(ctx).Msg("message")
-	ctx = baggage.ContextWithValues(ctx, label.String("key", "value2"))
+	m, _ = baggage.NewMember("key", "value2")
+	b, _ = baggage.FromContext(ctx).SetMember(m)
+	ctx = baggage.ContextWithBaggage(ctx, b)
 	Log(ctx).Msg("message")
 }
