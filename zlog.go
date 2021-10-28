@@ -14,7 +14,6 @@ import (
 	"github.com/rs/zerolog"
 	global "github.com/rs/zerolog/log"
 	"go.opentelemetry.io/otel/baggage"
-	"go.opentelemetry.io/otel/label"
 )
 
 // Log is the logger used by the package-level functions.
@@ -37,74 +36,9 @@ func addCtx(ctx context.Context, ev *zerolog.Event) *zerolog.Event {
 		return ev
 	}
 
-	s := baggage.Set(ctx)
-	for i := s.Iter(); i.Next(); {
-		kv := i.Label()
-		k := string(kv.Key)
-		v := kv.Value
-		switch v.Type() {
-		case label.BOOL:
-			ev.Bool(k, v.AsBool())
-		case label.INT32:
-			ev.Int32(k, v.AsInt32())
-		case label.INT64:
-			ev.Int64(k, v.AsInt64())
-		case label.UINT32:
-			ev.Uint32(k, v.AsUint32())
-		case label.UINT64:
-			ev.Uint64(k, v.AsUint64())
-		case label.FLOAT32:
-			ev.Float32(k, v.AsFloat32())
-		case label.FLOAT64:
-			ev.Float64(k, v.AsFloat64())
-		case label.STRING:
-			ev.Str(k, v.AsString())
-		case label.ARRAY:
-			za := zerolog.Arr()
-			switch a := v.AsArray().(type) {
-			case []bool:
-				for _, v := range a {
-					za.Bool(v)
-				}
-			case []string:
-				for _, v := range a {
-					za.Str(v)
-				}
-			case []int:
-				for _, v := range a {
-					za.Int(v)
-				}
-			case []int32:
-				for _, v := range a {
-					za.Int32(v)
-				}
-			case []int64:
-				for _, v := range a {
-					za.Int64(v)
-				}
-			case []uint:
-				for _, v := range a {
-					za.Uint(v)
-				}
-			case []uint32:
-				for _, v := range a {
-					za.Uint32(v)
-				}
-			case []uint64:
-				for _, v := range a {
-					za.Uint64(v)
-				}
-			case []float32:
-				for _, v := range a {
-					za.Float32(v)
-				}
-			case []float64:
-				for _, v := range a {
-					za.Float64(v)
-				}
-			}
-			ev.Array(k, za)
-		}
+	b := baggage.FromContext(ctx)
+	for _, m := range b.Members() {
+		ev.Str(m.Key(), m.Value())
 	}
 
 	return ev
