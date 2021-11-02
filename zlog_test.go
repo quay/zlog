@@ -2,8 +2,10 @@ package zlog
 
 import (
 	"context"
+	"os"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/baggage"
 )
 
@@ -52,6 +54,8 @@ func TestSub(t *testing.T) {
 }
 
 func Example() {
+	l := zerolog.New(os.Stdout)
+	Set(&l)
 	ctx := context.Background()
 	m, _ := baggage.NewMember("key", "value1")
 	b, _ := baggage.FromContext(ctx).SetMember(m)
@@ -61,4 +65,20 @@ func Example() {
 	b, _ = baggage.FromContext(ctx).SetMember(m)
 	ctx = baggage.ContextWithBaggage(ctx, b)
 	Log(ctx).Msg("message")
+	// Output:
+	// {"key":"value1","message":"message"}
+	// {"key":"value2","message":"message"}
+}
+
+func ExampleContextWithValues() {
+	l := zerolog.New(os.Stdout)
+	Set(&l)
+	ctx := context.Background()
+	ctx = ContextWithValues(ctx, "key", "value1")
+	Log(ctx).Msg("message")
+	ctx = ContextWithValues(ctx, "key", "value2")
+	Log(ctx).Msg("message")
+	// Output:
+	// {"key":"value1","message":"message"}
+	// {"key":"value2","message":"message"}
 }
