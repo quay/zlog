@@ -70,6 +70,15 @@ func TestContext(t *testing.T) {
 	Log(ctx).Msg("message")
 }
 
+func TestContextWithBadChars(t *testing.T) {
+	ctx := Test(context.Background(), t)
+	ctx = ContextWithValues(ctx,
+		"key1", "no bad news?#")
+	Log(ctx).Msg("message")
+	// Output:
+	// {"key":"no%20bad%20news%3F%23","message":"message"}
+}
+
 func Example() {
 	l := zerolog.New(os.Stdout)
 	Set(&l)

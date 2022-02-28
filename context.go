@@ -2,6 +2,7 @@ package zlog
 
 import (
 	"context"
+	"net/url"
 
 	"go.opentelemetry.io/otel/baggage"
 )
@@ -16,7 +17,7 @@ func ContextWithValues(ctx context.Context, pairs ...string) context.Context {
 	pairs = pairs[:len(pairs)-len(pairs)%2]
 	for i := 0; i < len(pairs); i = i + 2 {
 		k, v := pairs[i], pairs[i+1]
-		m, err := baggage.NewMember(k, v)
+		m, err := baggage.NewMember(k, url.PathEscape(v))
 		if err != nil {
 			Warn(ctx).
 				Err(err).
