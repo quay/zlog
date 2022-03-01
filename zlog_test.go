@@ -10,14 +10,14 @@ import (
 )
 
 func TestTestHarness(t *testing.T) {
-	ctx := Test(nil, t)
+	ctx := Test(context.TODO(), t)
 	t.Log("🖳")
 	Log(ctx).Msg("🖳")
 	Log(ctx).Msg("🆒")
 }
 
 func TestDeduplication(t *testing.T) {
-	ctx := Test(nil, t)
+	ctx := Test(context.TODO(), t)
 	t.Log("make sure keys aren't repeated")
 	m, _ := baggage.NewMember("x", "5")
 	b, _ := baggage.FromContext(ctx).SetMember(m)
@@ -32,7 +32,7 @@ func TestDeduplication(t *testing.T) {
 }
 
 func TestSub(t *testing.T) {
-	ctx := Test(nil, t)
+	ctx := Test(context.TODO(), t)
 	t.Log("make sure subtests are intelligible")
 	m, _ := baggage.NewMember("outer", "test")
 	b, _ := baggage.FromContext(ctx).SetMember(m)
@@ -73,10 +73,12 @@ func TestContext(t *testing.T) {
 func TestContextWithBadChars(t *testing.T) {
 	ctx := Test(context.Background(), t)
 	ctx = ContextWithValues(ctx,
-		"key1", "no bad news?#")
+		"key1", `no bad news",;\`,
+		"key2", "all/fine.here")
 	Log(ctx).Msg("message")
 	// Output:
-	// {"key":"no%20bad%20news%3F%23","message":"message"}
+	// {"key1":"no%20bad%20news%22%2C%3B%5C","key2":"all/fine.here","message":"message"}
+	t.Error("bl")
 }
 
 func Example() {
