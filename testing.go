@@ -61,7 +61,7 @@ func (s *logsink) Setup() {
 
 	// Set up caller information be default, because the testing package's line
 	// information will be incorrect.
-	zerolog.CallerMarshalFunc = func(file string, line int) string {
+	zerolog.CallerMarshalFunc = func(_ uintptr, file string, line int) string {
 		return filepath.Base(file) + ":" + strconv.Itoa(line)
 	}
 	l := zerolog.New(s).With().Caller().Logger()

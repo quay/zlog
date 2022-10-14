@@ -1,10 +1,13 @@
 package zlog
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/rs/zerolog"
 	"go.opentelemetry.io/otel/baggage"
 )
@@ -54,20 +57,73 @@ func TestSub(t *testing.T) {
 }
 
 func TestContext(t *testing.T) {
+	var buf bytes.Buffer
+	var got, want map[string]string
+	l := zerolog.New(&buf)
+	Set(&l)
 	ctx := Test(context.Background(), t)
+
 	ctx = ContextWithValues(ctx,
 		"key1", "value1",
 		"key2", "value2")
 	Log(ctx).Msg("message")
+	got = make(map[string]string)
+	want = map[string]string{
+		"zlog.testname": t.Name(),
+		"key1":          "value1",
+		"key2":          "value2",
+		"message":       "message",
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Error(err)
+	}
+	if !cmp.Equal(got, want) {
+		t.Error(cmp.Diff(got, want))
+	}
+	buf.Reset()
+
 	ctx = ContextWithValues(ctx,
 		"key3", "value3",
 		"key4", "value4")
 	Log(ctx).Msg("message")
+	got = make(map[string]string)
+	want = map[string]string{
+		"zlog.testname": t.Name(),
+		"key1":          "value1",
+		"key2":          "value2",
+		"key3":          "value3",
+		"key4":          "value4",
+		"message":       "message",
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Error(err)
+	}
+	if !cmp.Equal(got, want) {
+		t.Error(cmp.Diff(got, want))
+	}
+	buf.Reset()
+
 	ctx = ContextWithValues(ctx,
 		"key1", "value5",
 		"key2", "value6",
 		"dropme")
 	Log(ctx).Msg("message")
+	got = make(map[string]string)
+	want = map[string]string{
+		"zlog.testname": t.Name(),
+		"key1":          "value5",
+		"key2":          "value6",
+		"key3":          "value3",
+		"key4":          "value4",
+		"message":       "message",
+	}
+	if err := json.Unmarshal(buf.Bytes(), &got); err != nil {
+		t.Error(err)
+	}
+	if !cmp.Equal(got, want) {
+		t.Error(cmp.Diff(got, want))
+	}
+	buf.Reset()
 }
 
 func TestContextWithBadChars(t *testing.T) {
@@ -106,7 +162,5 @@ func ExampleContextWithValues() {
 	Log(ctx).Msg("message")
 	ctx = ContextWithValues(ctx, "key1", "value2", "key2", "value1", "dropme")
 	Log(ctx).Msg("message")
-	// Output:
-	// {"key1":"value1","message":"message"}
-	// {"key2":"value1","key1":"value2","message":"message"}
+	// Can't capture the output because iteration order isn't guarenteed.
 }
