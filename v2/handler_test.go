@@ -2,14 +2,16 @@ package zlog
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"hash/fnv"
 	"log/slog"
-	"math/big"
 	"net/netip"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -98,29 +100,38 @@ func TestHandler(t *testing.T) {
 func exerciseFormatter(t *testing.T, h slog.Handler) {
 	t.Helper()
 	const n = 4 // https://xkcd.com/221/
-	log := slog.New(h)
-	log.Info("bool", "true", true, "false", false)
-	log.Info("int64", "0", int64(0))
-	log.Info("uint64", "0", uint64(0))
-	log.Info("float64", "0", float64(0))
-	log.Info("time", "0", time.Unix(0, 0))
-	log.Info("duration", "0", time.Duration(0))
-	log.Info("mulitline", "hello", strings.Repeat("\n", 16)+"goodbye")
-	log.Info("errors", "err", errors.New("err"))
-	log.Info("escaped characters", "string", "\\\"\t\r\n\x00\x80\x7f")
-	log.Info("byte slice", "b", make([]byte, 8))
+	d := fnv.New64a()
+	d.Write([]byte{0x00})
 	v := plainstruct{
 		Name: "plain",
 		val:  any(json.RawMessage("{}")),
 	}
-	log.Info("random struct", "v", &v)
-	log.Info("marshal json", "null", new(big.Int), "4", new(big.Int).SetInt64(n))
-	log.Info("marshal text", "4", netip.IPv4Unspecified(), "6", netip.IPv6Unspecified())
-	d := fnv.New64a()
-	d.Write([]byte{0x00})
-	log.Info("marshal binary", "fnv64a", d)
-	log.Info("stringer", "4", S(n))
-	log.Info("gostringer", "4", G(n))
+	u, err := url.Parse("https://clairproject.org/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	j := J([]int{5, 4, 3, 2, 1})
+	ctx := WithLevel(context.Background(), slog.LevelDebug)
+	log := slog.New(h)
+	for _, l := range []slog.Level{slog.LevelError, slog.LevelWarn, slog.LevelInfo, slog.LevelDebug} {
+		log.Log(ctx, l, "bool", "true", true, "false", false)
+		log.Log(ctx, l, "int64", "0", int64(0))
+		log.Log(ctx, l, "uint64", "0", uint64(0))
+		log.Log(ctx, l, "float64", "0", float64(0))
+		log.Log(ctx, l, "time", "0", time.Unix(0, 0))
+		log.Log(ctx, l, "duration", "0", time.Duration(0))
+		log.Log(ctx, l, "mulitline", "hello", strings.Repeat("\n", 16)+"goodbye")
+		log.Log(ctx, l, "errors", "err", errors.New("err"))
+		log.Log(ctx, l, "escaped characters", "string", "\\\"\t\r\n\x00\x80\x7f")
+		log.Log(ctx, l, "byte slice", "b", make([]byte, 8))
+		log.Log(ctx, l, "random struct", "v", &v)
+		log.Log(ctx, l, "marshal json", "null", J(nil), "some", j)
+		log.Log(ctx, l, "marshal text", "4", netip.IPv4Unspecified(), "6", netip.IPv6Unspecified())
+		log.Log(ctx, l, "marshal binary", "fnv64a", d)
+		log.Log(ctx, l, "stringer", "4", S(n))
+		log.Log(ctx, l, "gostringer", "4", G(n))
+		log.Log(ctx, l, "url", "link", u)
+	}
 }
 
 // Struct with no special marshaling implemented.
@@ -141,6 +152,28 @@ type S int
 
 func (s S) String() string {
 	return fmt.Sprintf("String(%d)", int(s))
+}
+
+// Type implementing [json.Marshaler].
+type J []int
+
+func (j J) MarshalJSON() ([]byte, error) {
+	if j == nil {
+		return []byte("null"), nil
+	}
+	b := []byte("[")
+	for i, n := range j {
+		if i != 0 {
+			b = append(b, ',')
+		}
+		b = append(b, '[')
+		b = strconv.AppendInt(b, int64(i), 10)
+		b = append(b, ',')
+		b = strconv.AppendInt(b, int64(n), 10)
+		b = append(b, ']')
+	}
+	b = append(b, ']')
+	return b, nil
 }
 
 // Emulator implements io.Writer and decodes the writes as a journald log
