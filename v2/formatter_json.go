@@ -204,8 +204,8 @@ func writeJSONString(b *buffer, s string) {
 			default:
 				// This encodes bytes < 0x20 except for \t, \n and \r.
 				b.WriteString(`u00`)
-				b.WriteByte(hex[c>>4])
-				b.WriteByte(hex[c&0xF])
+				b.WriteByte(hexChar[c>>4])
+				b.WriteByte(hexChar[c&0xF])
 			}
 			i++
 			start = i
@@ -228,8 +228,8 @@ func writeJSONString(b *buffer, s string) {
 	}
 }
 
-// Hex is the set of hex characters.
-var hex = "0123456789abcdef"
+// HexChar is the set of hex characters.
+var hexChar = "0123456789abcdef"
 
 // Copied from encoding/json/tables.go.
 //
