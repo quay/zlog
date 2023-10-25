@@ -11,7 +11,59 @@
 // and for when the memfd-based (see memfd_create(2) and unix(7)) protocol must
 // be used.
 //
+// # Prose output
+//
+// If ProseFormat is set, output will be in prose rather than JSON.
+// The field order is not configurable.
+// ANSI color codes and [terminal hyperlinks] will be used when attached to a TTY.
+// The environment variables "[NO_COLOR]" and "ZLOG_COLORS" can be used to
+// control colors.
+// Log records are separated by a ␞, fields are separated by a ␟, and the
+// attributes are separated from the message with a ␝. These [field separators]
+// may trip up incorrect programs.
+//
+// # ZLOG_COLORS
+//
+// The "ZLOG_COLORS" environment variable is akin to "[LS_COLORS]".
+// It is a colon-delimited series of [SGR] parameters.
+// Any characters outside of the range [0-;] will be ignored.
+// The controllable colors are, in order:
+//
+//   - Error Level
+//   - Warn Level
+//   - Info Level
+//   - Debug Level
+//   - Source
+//   - Timestamp
+//   - Message
+//   - Key
+//   - string / [fmt.Stringer]
+//   - bool (true)
+//   - bool (false)
+//   - Number (int64/uint64/float64)
+//   - [time.Time]
+//   - [time.Duration]
+//   - error
+//   - [encoding.TextUnmarshaler]
+//   - [fmt.GoStringer]
+//   - [encoding.BinaryUnmarshaler] / []byte
+//   - [json.Unmarshaler]
+//   - [fmt.Print]
+//
+// All left-ward elements must be present, but may be empty. For example, to highlight
+// only errors:
+//
+//	ZLOG_COLORS='::::::::::::::5';
+//	export ZLOG_COLORS
+//
+// See [DefaultProseColors] for the default colors.
+//
 // [native Journald protocol]: https://systemd.io/JOURNAL_NATIVE_PROTOCOL/
+// [terminal hyperlinks]: https://gist.github.com/egmontkob/eb114294efbcd5adb1944c9f3cb5feda
+// [NO_COLOR]: https://no-color.org/
+// [LS_COLORS]: https://www.gnu.org/software/coreutils/manual/coreutils.html#dircolors-invocation
+// [field separators]: https://en.wikipedia.org/wiki/C0_and_C1_control_codes#Field_separators
+// [SGR]: https://en.wikipedia.org/wiki/ANSI_escape_code#SGR_(Select_Graphic_Rendition)_parameters
 package zlog
 
 import (
@@ -94,6 +146,11 @@ func NewHandler(w io.Writer, opts *Options) slog.Handler {
 	if h, ok := tryJournal(w, opts); ok {
 		return h
 	}
+
+	if opts.ProseFormat {
+		return proseHandler(w, opts)
+	}
+
 	return &handler[*stateJSON]{
 		out:  &syncWriter{Writer: w},
 		opts: opts,
@@ -123,6 +180,14 @@ type Options struct {
 	OmitSource bool
 	// OmitTime controls whether a timestamp should be emitted.
 	OmitTime bool
+	//  ProseFormat controls whether the lines should be emitted in prose or
+	//  JSON format.
+	//
+	// When connected to the Journal, this setting has no effect.
+	ProseFormat bool
+
+	// ForceANSI is a hook for testing to force ANSI color output.
+	forceANSI bool
 }
 
 // Enabled implements [slog.Handler].

@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"net/netip"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -66,6 +67,15 @@ func TestHandler(t *testing.T) {
 			pool: getPool[*stateJournal](),
 		}
 		if err := slogtest.TestHandler(h, emu.Results); err != nil {
+			t.Error(err)
+		}
+		exerciseFormatter(t, h)
+	})
+
+	t.Run("Prose", func(t *testing.T) {
+		var buf bytes.Buffer
+		h := proseHandler(&buf, &Options{})
+		if err := slogtest.TestHandler(h, parseProseRecords(t, &buf)); err != nil {
 			t.Error(err)
 		}
 		exerciseFormatter(t, h)
@@ -268,4 +278,104 @@ func (e *emulator) Results() []map[string]any {
 	e.Lock()
 	defer e.Unlock()
 	return e.res
+}
+
+func isUS(r rune) bool { return r == 0x1f }
+
+func parseProseRecords(t *testing.T, buf *bytes.Buffer) func() []map[string]any {
+	return func() []map[string]any {
+		var ms []map[string]any
+		for _, line := range bytes.Split(buf.Bytes(), []byte{'\n'}) {
+			// Validations:
+			if len(line) == 0 {
+				continue
+			}
+			t.Logf("msg: %+#q", line)
+			if line[len(line)-1] != 0x1e {
+				t.Error("no ␞")
+				continue
+			}
+			line = line[:len(line)-1]
+
+			// Split into the fixed records and attrs:
+			rec, attr, ok := bytes.Cut(line, []byte{0x1d})
+			if !ok {
+				t.Error("no ␝")
+				continue
+			}
+
+			m := make(map[string]any)
+
+			// Handle fixed records:
+			recs := bytes.FieldsFunc(rec, isUS)
+			var l slog.Level
+			if err := l.UnmarshalText(bytes.TrimSpace(recs[0])); err != nil {
+				t.Error(err)
+			}
+			m[slog.LevelKey] = l
+			recs = recs[1:]
+			switch len(recs) {
+			case 3:
+				m[slog.SourceKey] = string(bytes.TrimSpace(recs[0]))
+				recs = recs[1:]
+				fallthrough
+			case 2:
+				s := string(bytes.TrimSpace(recs[0]))
+				// Can be a path or a timestamp. Exploit the fact that we know
+				// the time is in RFC3339 format and will not have path
+				// separators.
+				if strings.Contains(s, string(filepath.Separator)) {
+					m[slog.SourceKey] = s
+				} else {
+					v, err := time.Parse(time.RFC3339, s)
+					if err != nil {
+						t.Error(err)
+					}
+					m[slog.TimeKey] = v
+				}
+				recs = recs[1:]
+				fallthrough
+			case 1:
+				m[slog.MessageKey] = string(bytes.TrimSpace(recs[0]))
+			}
+
+			// Handle attrs:
+			for _, f := range bytes.FieldsFunc(attr, isUS) {
+				f = bytes.TrimSpace(f)
+				if len(f) == 0 {
+					continue
+				}
+				k, v, ok := strings.Cut(string(f), "=")
+				if !ok {
+					t.Errorf(`no "=": %+q`, string(f))
+					continue
+				}
+				if v[0] == '"' {
+					s, err := strconv.Unquote(v)
+					if err != nil {
+						t.Errorf("unable to unquote: %v", err)
+						continue
+					}
+					v = s
+				}
+				// Reconstruct groups:
+				ks := strings.Split(k, ".")
+				cur := m
+				for i, k := range ks {
+					if i == len(ks)-1 {
+						cur[k] = v
+						continue
+					}
+					n, ok := cur[k]
+					if !ok {
+						n = make(map[string]any)
+						cur[k] = n
+					}
+					cur = n.(map[string]any)
+				}
+			}
+			ms = append(ms, m)
+		}
+		return ms
+	}
 }
