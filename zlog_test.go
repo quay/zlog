@@ -134,7 +134,6 @@ func TestContextWithBadChars(t *testing.T) {
 	Log(ctx).Msg("message")
 	// Output:
 	// {"key1":"no%20bad%20news%22%2C%3B%5C","key2":"all/fine.here","message":"message"}
-	t.Error("bl")
 }
 
 func Example() {
