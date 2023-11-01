@@ -2,7 +2,9 @@ package zlog
 
 import (
 	"context"
+	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/baggage"
 )
@@ -16,6 +18,18 @@ var esc = strings.NewReplacer(
 	`\`, "%5C",
 )
 
+// NeedEscape reports whether a rune needs to be escaped either into an ASCII
+// or a percent-encoded representation.
+func needEscape(r rune) bool {
+	return r >= utf8.RuneSelf ||
+		r == '%' ||
+		r == ' ' ||
+		r == '"' ||
+		r == ',' ||
+		r == ';' ||
+		r == '\''
+}
+
 // ContextWithValues is a helper for the go.opentelemetry.io/otel/baggage v1
 // API. It takes pairs of strings and adds them to the Context via the baggage
 // package.
@@ -26,7 +40,10 @@ func ContextWithValues(ctx context.Context, pairs ...string) context.Context {
 	pairs = pairs[:len(pairs)-len(pairs)%2]
 	for i := 0; i < len(pairs); i = i + 2 {
 		k, v := pairs[i], pairs[i+1]
-		v = esc.Replace(v)
+		if strings.ContainsFunc(v, needEscape) {
+			v = esc.Replace(v)
+			v = strconv.QuoteToASCII(v)
+		}
 		m, err := baggage.NewMember(k, v)
 		if err != nil {
 			Warn(ctx).
@@ -36,12 +53,14 @@ func ContextWithValues(ctx context.Context, pairs ...string) context.Context {
 				Msg("failed to create baggage member")
 			continue
 		}
-		b, err = b.SetMember(m)
+		n, err := b.SetMember(m)
 		if err != nil {
 			Warn(ctx).
 				Err(err).
 				Msg("failed to create baggage")
+			continue
 		}
+		b = n
 	}
 	return baggage.ContextWithBaggage(ctx, b)
 }
