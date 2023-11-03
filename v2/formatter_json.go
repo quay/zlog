@@ -2,8 +2,12 @@ package zlog
 
 import (
 	"bytes"
+	"encoding"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log/slog"
+	"net/url"
 	"runtime"
 	"strconv"
 	"time"
@@ -118,23 +122,44 @@ var formatterJSON = formatter[*stateJSON]{
 		*b = append(*b, d.String()...)
 		b.WriteString(`",`)
 	},
-	AppendAny: func(b *buffer, s *stateJSON, v any) error {
-		// Copies slog's behavior because it seems sensible.
-		m, isM := v.(json.Marshaler)
-		err, isErr := v.(error)
-		switch {
-		case isErr && !isM:
-			// Use the error's stringified version.
-			b.WriteByte('"')
-			writeJSONString(b, err.Error())
-			b.WriteString(`",`)
-		case isM:
-			o, err := m.MarshalJSON()
+	AppendAny: func(b *buffer, s *stateJSON, v any) (err error) {
+		switch v := v.(type) {
+		case json.Marshaler:
+			o, err := v.MarshalJSON()
 			if err != nil {
 				return err
 			}
 			b.Write(o)
 			b.WriteByte(',')
+		case *url.URL:
+			b.WriteByte('"')
+			writeJSONString(b, v.String())
+			b.WriteString(`",`)
+		case error:
+			b.WriteByte('"')
+			writeJSONString(b, v.Error())
+			b.WriteString(`",`)
+		case fmt.Stringer:
+			b.WriteByte('"')
+			writeJSONString(b, v.String())
+			b.WriteString(`",`)
+		case fmt.GoStringer:
+			b.WriteByte('"')
+			writeJSONString(b, v.GoString())
+			b.WriteString(`",`)
+		case encoding.BinaryMarshaler:
+			var t []byte
+			t, err = v.MarshalBinary()
+			if err != nil {
+				return err
+			}
+			b.WriteByte('"')
+			b.WriteString(base64.StdEncoding.EncodeToString(t))
+			b.WriteString(`",`)
+		case []byte:
+			b.WriteByte('"')
+			b.WriteString(base64.StdEncoding.EncodeToString(v))
+			b.WriteString(`",`)
 		default:
 			enc := json.NewEncoder(b)
 			enc.SetEscapeHTML(false)
