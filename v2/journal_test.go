@@ -9,12 +9,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/go-cmp/cmp"
 )
@@ -82,36 +84,55 @@ func TestJournald(t *testing.T) {
 	cmd = exec.Command(logs, `--user`, `--sync`)
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf
-	if cmd.Run(); err != nil {
-		t.Logf("output: %s", &buf)
-		t.Logf(`"--sync" command: %v`, err)
-	}
-
-	buf.Reset()
-	cmd = exec.Command(logs,
-		`--user`,
-		`--output`, `json`,
-		`--all`,                  // Need to get messages larger than 4096 bytes.
-		`USER_INVOCATION_ID=`+id, // Don't get the `go test` output.
-		`_TRANSPORT=journal`,     // Don't get the "exercise" output.
-	)
-	cmd.Stdout = &buf
-	cmd.Stderr = &buf
 	t.Logf("exec: %q", cmd.Args)
-	if err := cmd.Run(); err != nil {
+	if cmd.Run(); err != nil {
 		t.Logf("output: %s", &buf)
 		t.Fatal(err)
 	}
-	dec := json.NewDecoder(&buf)
 
-	var got journalMsg
-	for _, want := range expected {
-		if err := dec.Decode(&got); err != nil {
-			t.Error(err)
+	// Try a few times to debounce any timing issues.
+	i := 0
+Retry:
+	for ; i < 3; i++ {
+		if i != 0 {
+			time.Sleep(500 * time.Millisecond)
 		}
-		if !cmp.Equal(got, want) {
-			t.Error(cmp.Diff(got, want))
+		buf.Reset()
+		cmd = exec.Command(logs,
+			`--user`,
+			`--output`, `json`,
+			`--all`,                  // Need to get messages larger than 4096 bytes.
+			`USER_INVOCATION_ID=`+id, // Don't get the `go test` output.
+			`_TRANSPORT=journal`,     // Don't get the "exercise" output.
+		)
+		cmd.Stdout = &buf
+		cmd.Stderr = &buf
+		t.Logf("attempt %d: exec: %q", i+1, cmd.Args)
+		if err := cmd.Run(); err != nil {
+			t.Logf("output: %s", &buf)
+			t.Fatal(err)
 		}
+		dec := json.NewDecoder(&buf)
+
+		var got journalMsg
+		for _, want := range expected {
+			err := dec.Decode(&got)
+			if err != nil {
+				t.Logf("decode error: %v", err)
+			}
+			if errors.Is(err, io.EOF) {
+				continue Retry
+			}
+			if !cmp.Equal(got, want) {
+				t.Error(cmp.Diff(got, want))
+			}
+		}
+		if !t.Failed() {
+			break
+		}
+	}
+	if i == 3 {
+		t.Fail()
 	}
 }
 
