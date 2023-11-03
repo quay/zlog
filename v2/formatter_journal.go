@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"runtime"
 	"strconv"
 	"strings"
@@ -86,24 +88,19 @@ var formatterJournal = formatter[*stateJournal]{
 		b.WriteByte('\n')
 	},
 	AppendAny: func(b *buffer, s *stateJournal, v any) error {
-		err, isErr := v.(error)
-		tm, canTM := v.(encoding.TextMarshaler)
-		bm, canBM := v.(encoding.BinaryMarshaler)
-		str, canStr := v.(fmt.Stringer)
-		goStr, canGoStr := v.(fmt.GoStringer)
-		bin, isBin := v.([]byte)
-		switch {
-		case isErr && !canTM:
-			// Use the error's stringified version.
-			journalString(b, err.Error())
-		case canTM:
-			m, err := tm.MarshalText()
+		switch v := v.(type) {
+		case *url.URL:
+			journalString(b, v.String())
+		case error:
+			journalString(b, v.Error())
+		case encoding.TextMarshaler:
+			m, err := v.MarshalText()
 			if err != nil {
 				return err
 			}
 			journalString(b, string(m))
-		case canBM:
-			m, err := bm.MarshalBinary()
+		case encoding.BinaryMarshaler:
+			m, err := v.MarshalBinary()
 			if err != nil {
 				return err
 			}
@@ -111,14 +108,20 @@ var formatterJournal = formatter[*stateJournal]{
 			*b = binary.LittleEndian.AppendUint64(*b, uint64(len(m)))
 			b.Write(m)
 			b.WriteByte('\n')
-		case canStr:
-			journalString(b, str.String())
-		case canGoStr:
-			journalString(b, goStr.GoString())
-		case isBin:
+		case json.Marshaler:
+			m, err := v.MarshalJSON()
+			if err != nil {
+				return err
+			}
+			journalString(b, string(m))
+		case fmt.Stringer:
+			journalString(b, v.String())
+		case fmt.GoStringer:
+			journalString(b, v.GoString())
+		case []byte:
 			b.ReplaceTail('\n')
-			*b = binary.LittleEndian.AppendUint64(*b, uint64(len(bin)))
-			b.Write(bin)
+			*b = binary.LittleEndian.AppendUint64(*b, uint64(len(v)))
+			b.Write(v)
 			b.WriteByte('\n')
 		default:
 			i := len(*b)
