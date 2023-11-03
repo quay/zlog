@@ -73,20 +73,90 @@ import (
 	"log/slog"
 	"runtime"
 	"runtime/pprof"
+	"slices"
+	"strings"
 
 	"go.opentelemetry.io/otel/baggage"
 )
 
-// CtxKey is the type for Context keys.
-type ctxKey struct{}
+type (
+	ctxLevelKey struct{}
+	ctxAttrKey  struct{}
+)
 
-// CtxLevel is for per-Context log levels.
-var ctxLevel ctxKey
+var (
+	// CtxLevel is for per-Context log levels.
+	ctxLevel ctxLevelKey
+	// CtxAttr is for per-Context slog.Attr elements.
+	ctxAttr ctxAttrKey
+)
 
 // WithLevel overrides the minimum log level for all records created with the
 // returned context.
 func WithLevel(ctx context.Context, l slog.Level) context.Context {
 	return context.WithValue(ctx, &ctxLevel, l)
+}
+
+// WithAttrs records the provided arguments to be added as additional
+// [slog.Attr] elements to any records created with the returned context.
+//
+// Adding Attrs for a previously added Key replaces that Attr in the returned
+// Context. To remove an Attr, use an empty [slog.Group] as the value.
+//
+// This is more expensive than adding Attrs via [slog.Logger.With], which should
+// be preferred when function signatures allow.
+func WithAttrs(ctx context.Context, args ...any) context.Context {
+	// This is based roughly on how the [slog.Record.Add] method is implemented.
+	if len(args) == 0 {
+		return ctx
+	}
+
+	var cur []slog.Attr
+	if prev, ok := ctx.Value(&ctxAttr).(*[]slog.Attr); ok {
+		cur = make([]slog.Attr, len(*prev), len(*prev)+(len(args)/2))
+		copy(cur, *prev)
+	} else {
+		cur = make([]slog.Attr, 0, len(args)/2)
+	}
+
+	var a slog.Attr
+	for len(args) > 0 {
+		a, args = argsToAttr(args)
+		cur = append(cur, a)
+	}
+	slices.SortStableFunc(cur, func(a, b slog.Attr) int {
+		return strings.Compare(a.Key, b.Key)
+	})
+	// We want to keep only the last instance of a key, so this needs two
+	// [slices.Reverse] calls.
+	slices.Reverse(cur)
+	cur = slices.CompactFunc(cur, func(a, b slog.Attr) bool {
+		return a.Key == b.Key
+	})
+	cur = slices.DeleteFunc(cur, func(a slog.Attr) bool {
+		v := a.Value
+		return v.Kind() == slog.KindGroup && len(v.Group()) == 0
+	})
+	cur = slices.Clip(cur)
+	slices.Reverse(cur)
+
+	return context.WithValue(ctx, &ctxAttr, &cur)
+}
+
+// ArgsToAttr slices off up to two elements to construct a [slog.Attr] and
+// returns it along with a slice of the remaining elements.
+func argsToAttr(args []any) (slog.Attr, []any) {
+	switch x := args[0].(type) {
+	case string:
+		if len(args) == 1 {
+			return slog.Group(x), nil
+		}
+		return slog.Any(x, args[1]), args[2:]
+	case slog.Attr:
+		return x, args[1:]
+	default:
+		return slog.Any(`!BADKEY`, x), args[1:]
+	}
 }
 
 // Some extra [slog.Level] aliases and syslog(3) compatible levels (as
@@ -263,6 +333,11 @@ func (h *handler[S]) Handle(ctx context.Context, r slog.Record) (err error) {
 	// Add the attached Attrs.
 	if h.prefmt != nil {
 		b.Write(*h.prefmt)
+	}
+	if p, ok := ctx.Value(&ctxAttr).(*[]slog.Attr); ok {
+		for _, a := range *p {
+			h.appendAttr(b, s, a)
+		}
 	}
 	r.Attrs(func(a slog.Attr) bool {
 		h.appendAttr(b, s, a)

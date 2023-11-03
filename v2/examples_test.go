@@ -83,3 +83,28 @@ func ExampleWithLevel() {
 	// {"level":"ERROR","msg":"normal log message","i":3}
 	// {"level":"ERROR","msg":"normal log message","i":3}
 }
+
+func ExampleWithAttrs() {
+	opts := Options{
+		OmitTime:   true,
+		OmitSource: true,
+	}
+	ctx := context.Background()
+	h := NewHandler(os.Stdout, &opts)
+	l := slog.New(h)
+	l.InfoContext(ctx, "without ctx attrs", "a", "b")
+	ctx = WithAttrs(ctx, "contextual", "value")
+	l.InfoContext(ctx, "with ctx attrs", "a", "b")
+	{
+		ctx := WithLevel(ctx, slog.LevelDebug)
+		l.DebugContext(ctx, "with ctx attrs", "a", "b")
+	}
+	ctx = WithAttrs(ctx, "contextual", slog.GroupValue())
+	l.InfoContext(ctx, "removed ctx attrs", "a", "b")
+
+	// Output:
+	// {"level":"INFO","msg":"without ctx attrs","a":"b"}
+	// {"level":"INFO","msg":"with ctx attrs","contextual":"value","a":"b"}
+	// {"level":"DEBUG","msg":"with ctx attrs","contextual":"value","a":"b"}
+	// {"level":"INFO","msg":"removed ctx attrs","a":"b"}
+}
