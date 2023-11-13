@@ -40,7 +40,8 @@ func ContextWithValues(ctx context.Context, pairs ...string) context.Context {
 	pairs = pairs[:len(pairs)-len(pairs)%2]
 	for i := 0; i < len(pairs); i = i + 2 {
 		k, v := pairs[i], pairs[i+1]
-		if strings.ContainsFunc(v, needEscape) {
+		// TODO(hank) Use go1.21's [strings.ContainsFunc].
+		if strings.IndexFunc(v, needEscape) != -1 {
 			v = esc.Replace(v)
 			v = strconv.QuoteToASCII(v)
 		}
