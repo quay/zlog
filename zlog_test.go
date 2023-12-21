@@ -12,6 +12,51 @@ import (
 	"go.opentelemetry.io/otel/baggage"
 )
 
+func TestEscape(t *testing.T) {
+	t.Run("NeedEscape", func(t *testing.T) {
+		tt := []struct {
+			In   string
+			Want bool
+		}{
+			{"%25", false},
+			{"%2C", false},
+			{"%age", true},
+			{"%", true},
+			{"ꙮ", true},
+			{"%", true},
+			{" ", true},
+			{`"`, true},
+			{",", true},
+			{";", true},
+			{"\\", true},
+		}
+		for _, tc := range tt {
+			if got, want := needEscape.MatchString(tc.In), tc.Want; got != want {
+				t.Errorf("needEscape.MatchString(%q): got: %v, want %v", tc.In, got, want)
+			}
+		}
+	})
+	t.Run("EscapeValue", func(t *testing.T) {
+		tt := []struct {
+			In   string
+			Want string
+		}{
+			{`"🆒"`, `%22\U0001f192%22`},
+			{`https://example.com?data=%70%62%73%73%77%6F%72%64&a=b`, `https://example.com?data=%70%62%73%73%77%6F%72%64&a=b`},
+			{`20% done`, `20%25%20done`},
+			{`%9Z`, `%259Z`},
+			{`\n`, `%5Cn`},
+			{`,`, `%2C`},
+			{`;`, `%3B`},
+		}
+		for _, tc := range tt {
+			if got, want := escapeValue(tc.In), tc.Want; got != want {
+				t.Error(cmp.Diff(got, want))
+			}
+		}
+	})
+}
+
 func TestTestHarness(t *testing.T) {
 	ctx := Test(context.TODO(), t)
 	t.Log("🖳")

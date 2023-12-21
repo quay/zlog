@@ -2,32 +2,48 @@ package zlog
 
 import (
 	"context"
+	"fmt"
+	"regexp"
 	"strconv"
-	"strings"
-	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/baggage"
 )
 
-var esc = strings.NewReplacer(
-	"%", "%25",
-	" ", "%20",
-	`"`, "%22",
-	",", "%2C",
-	";", "%3B",
-	`\`, "%5C",
-)
+// NeedEscape matches a string that needs to be escaped either into an ASCII or a percent-encoded representation.
+var needEscape = regexp.MustCompile(`%(?:$|([0-9a-fA-F]?[^0-9a-fA-F]))|[^\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]`)
 
-// NeedEscape reports whether a rune needs to be escaped either into an ASCII
-// or a percent-encoded representation.
-func needEscape(r rune) bool {
-	return r >= utf8.RuneSelf ||
-		r == '%' ||
-		r == ' ' ||
-		r == '"' ||
-		r == ',' ||
-		r == ';' ||
-		r == '\''
+// PctEncode matches a string that requires some characters to be percent-encoded.
+var pctEncode = regexp.MustCompile(`%(?:$|([0-9a-fA-F][^0-9a-fA-F])|[^0-9a-fA-F])| |"|,|;|\\`)
+
+func escapeValue(v string) string {
+	v = pctEncode.ReplaceAllStringFunc(v, func(m string) (r string) {
+		for _, c := range m {
+			switch c {
+			case '%':
+				r += "%25"
+			case ' ':
+				r += "%20"
+			case '"':
+				r += "%22"
+			case ',':
+				r += "%2C"
+			case ';':
+				r += "%3B"
+			case '\\':
+				r += "%5C"
+			default:
+				// Just copy to the return value.
+				// This is (hopefully) just picking up the positions where percent-encoded nybbles would be.
+				r += string(c)
+			}
+		}
+		if len(m) == len(r) {
+			panic(fmt.Sprintf("programmer error: pulled odd string %q", m))
+		}
+		return r
+	})
+	v = strconv.QuoteToASCII(v)
+	return v[1 : len(v)-1]
 }
 
 // ContextWithValues is a helper for the go.opentelemetry.io/otel/baggage v1
@@ -40,10 +56,8 @@ func ContextWithValues(ctx context.Context, pairs ...string) context.Context {
 	pairs = pairs[:len(pairs)-len(pairs)%2]
 	for i := 0; i < len(pairs); i = i + 2 {
 		k, v := pairs[i], pairs[i+1]
-		// TODO(hank) Use go1.21's [strings.ContainsFunc].
-		if strings.IndexFunc(v, needEscape) != -1 {
-			v = esc.Replace(v)
-			v = strconv.QuoteToASCII(v)
+		if needEscape.MatchString(v) {
+			v = escapeValue(v)
 		}
 		m, err := baggage.NewMember(k, v)
 		if err != nil {
