@@ -1,0 +1,89 @@
+---
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lints:
+    name: Lints
+    runs-on: ubuntu-latest
+    steps:
+      - name: Commit Check
+        uses: gsactions/commit-message-checker@v2
+        with:
+          pattern: |
+            ^[^:!]+: .+\n\n.*$
+          error: 'Commit must begin with <scope>: <subject>'
+          flags: 'gm'
+          excludeTitle: true
+          excludeDescription: true
+          checkAllCommitMessages: true
+          accessToken: ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        id: checkout
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@v4
+      - name: Check Filenames
+        if: ${{ !cancelled() && steps.checkout.conclusion == 'success' }}
+        run: | # Check for all the characters Windows hates.
+          git ls-files -- ':/:*[<>:"|?*]*' | while read -r file; do
+            printf '::error file=%s,title=Bad Filename::Disallowed character in file name\n' "$file"
+          done
+          exit $(git ls-files -- ':/:*[<>:"|?*]*' | wc -l)
+      - name: Setup Go
+        id: 'setupgo'
+        if: ${{ !cancelled() && steps.checkout.conclusion == 'success' }}
+        uses: actions/setup-go@v5
+        with:
+          cache: false
+          go-version: oldstable
+      - name: Go Tidy
+        if: ${{ !cancelled() && steps.checkout.conclusion == 'success' && steps.setupgo.conclusion == 'success' }}
+        run: |
+          # go mod tidy
+          cat <<'.' >>"${RUNNER_TEMP}/tidy.sh"
+          set -e
+          trap 'echo "::error file=$(git rev-parse --show-prefix)/go.mod,title=Tidy Check::Commit would leave go.mod untidy"' ERR
+          go mod tidy
+          git diff --exit-code
+          .
+          find . -name .git -prune -o -name testdata -prune -o -name go.mod -execdir sh "${RUNNER_TEMP}/tidy.sh" \;
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go:
+          - stable
+          - oldstable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Tests
+        env:
+          COVER: ${{ strategy.job-index == 0 && '1' || null }}
+        run: |
+          # go test
+          cat <<'.' >>"${RUNNER_TEMP}/test.sh"
+          set -e
+          echo "::group::go test $(go list -m)"
+          trap 'echo "::endgroup::"' EXIT
+          go test -race ${RUNNER_DEBUG:+-v} ${COVER:+-coverprofile=${RUNNER_TEMP}/$(go list -m | tr / _).codecov.out -covermode=atomic} ./...
+          .
+          find . -name .git -prune -o -name testdata -prune -o -name go.mod -execdir sh "${RUNNER_TEMP}/test.sh" \;
+      - name: Codecov
+        if: >-
+          success() &&
+          strategy.job-index == 0
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ${{ runner.temp }}
+          override_branch: ${{ github.ref_name }}
