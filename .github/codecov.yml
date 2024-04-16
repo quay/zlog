@@ -1,0 +1,25 @@
+ignore:
+- "**/*_string.go"  # Ignore generated string implementations.
+
+coverage:
+  status:
+    # Per-patch reporting is weird: refactors can crater the patch coverage
+    # percentage while keeping the same or better project coverage percentage.
+    patch:
+      default:
+        informational: true
+    project:
+      default:
+        threshold: 0.5%
+
+component_management:
+  default_rules: {}
+  individual_components:
+  - component_id: v1_module
+    name: v1
+    paths:
+    - ./*.go
+  - component_id: v2_module
+    name: v2
+    paths:
+    - ./v2/**
