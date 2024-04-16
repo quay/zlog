@@ -85,5 +85,6 @@ jobs:
           strategy.job-index == 0
         uses: codecov/codecov-action@v4
         with:
+          token: ${{ secrets.CODECOV_TOKEN }}
           directory: ${{ runner.temp }}
           override_branch: ${{ github.ref_name }}
