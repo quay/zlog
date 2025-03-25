@@ -30,27 +30,8 @@ func TestHandler(t *testing.T) {
 	}
 
 	t.Run("JSON", func(t *testing.T) {
-		var buf bytes.Buffer
-		h := NewHandler(&buf, nil)
-		results := func() []map[string]any {
-			var ms []map[string]any
-			for _, line := range bytes.Split(buf.Bytes(), []byte{'\n'}) {
-				if len(line) == 0 {
-					continue
-				}
-				var m map[string]any
-				if err := json.Unmarshal(line, &m); err != nil {
-					t.Errorf("in: %#q; error: %v", line, err)
-				}
-				ms = append(ms, m)
-			}
-			return ms
-		}
-
-		if err := slogtest.TestHandler(h, results); err != nil {
-			t.Error(err)
-		}
-		msgs.json = results()
+		tester := &jsonTester{results: &msgs.json}
+		slogtest.Run(t, tester.NewHandler, tester.Result)
 	})
 
 	t.Run("Journald", func(t *testing.T) {
@@ -69,12 +50,8 @@ func TestHandler(t *testing.T) {
 	})
 
 	t.Run("Prose", func(t *testing.T) {
-		var buf bytes.Buffer
-		h := proseHandler(&buf, &Options{})
-		if err := slogtest.TestHandler(h, parseProseRecords(t, &buf)); err != nil {
-			t.Error(err)
-		}
-		msgs.prose = parseProseRecords(t, &buf)()
+		tester := &proseTester{results: &msgs.prose}
+		slogtest.Run(t, tester.NewHandler, tester.Result)
 	})
 
 	// Test that our encodings are broadly similar.
@@ -146,6 +123,43 @@ func TestHandler(t *testing.T) {
 			t.Error(cmp.Diff(msgs.json, msgs.prose, opts))
 		}
 	})
+}
+
+type jsonTester struct {
+	results *[]map[string]any
+	buf     bytes.Buffer
+}
+
+func (j *jsonTester) NewHandler(t *testing.T) slog.Handler {
+	j.buf.Reset()
+	return NewHandler(&j.buf, nil)
+}
+
+func (j *jsonTester) Result(t *testing.T) map[string]any {
+	v := map[string]any{}
+	data := j.buf.Bytes()
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Errorf("in: %#q; error: %v", data, err)
+	}
+	*j.results = append(*j.results, v)
+	return v
+}
+
+type proseTester struct {
+	results *[]map[string]any
+	buf     bytes.Buffer
+}
+
+func (p *proseTester) NewHandler(t *testing.T) slog.Handler {
+	p.buf.Reset()
+	return proseHandler(&p.buf, &Options{})
+}
+
+func (p *proseTester) Result(t *testing.T) map[string]any {
+	t.Logf("line: %#q", p.buf.Bytes())
+	v := parseProseRecord(t, p.buf.Bytes())
+	*p.results = append(*p.results, v)
+	return v
 }
 
 var (
@@ -524,95 +538,105 @@ func parseProseRecords(t *testing.T, buf *bytes.Buffer) func() []map[string]any 
 	return func() []map[string]any {
 		var ms []map[string]any
 		for _, line := range bytes.Split(buf.Bytes(), []byte{'\n'}) {
-			// Validations:
-			if len(line) == 0 {
-				continue
-			}
-			if line[len(line)-1] != 0x1e {
-				t.Error("no ␞")
-				continue
-			}
-			line = line[:len(line)-1]
-
-			// Split into the fixed records and attrs:
-			rec, attr, ok := bytes.Cut(line, []byte{0x1d})
-			if !ok {
-				t.Error("no ␝")
-				continue
-			}
-
-			m := make(map[string]any)
-
-			// Handle fixed records:
-			recs := bytes.FieldsFunc(rec, isUS)
-			var l slog.Level
-			if err := l.UnmarshalText(bytes.TrimSpace(recs[0])); err != nil {
-				t.Error(err)
-			}
-			m[slog.LevelKey] = l.String()
-			recs = recs[1:]
-			switch len(recs) {
-			case 3:
-				m[slog.SourceKey] = string(bytes.TrimSpace(recs[0]))
-				recs = recs[1:]
-				fallthrough
-			case 2:
-				s := string(bytes.TrimSpace(recs[0]))
-				// Can be a path or a timestamp. Exploit the fact that we know
-				// the time is in RFC3339 format and will not have path
-				// separators.
-				if strings.Contains(s, string(filepath.Separator)) {
-					m[slog.SourceKey] = s
-				} else {
-					v, err := time.Parse(time.RFC3339, s)
-					if err != nil {
-						t.Error(err)
-					}
-					m[slog.TimeKey] = v
-				}
-				recs = recs[1:]
-				fallthrough
-			case 1:
-				m[slog.MessageKey] = string(bytes.TrimSpace(recs[0]))
-			}
-
-			// Handle attrs:
-			for _, f := range bytes.FieldsFunc(attr, isUS) {
-				f = bytes.TrimSpace(f)
-				if len(f) == 0 {
-					continue
-				}
-				k, v, ok := strings.Cut(string(f), "=")
-				if !ok {
-					t.Errorf(`no "=": %+q`, string(f))
-					continue
-				}
-				if v[0] == '"' {
-					s, err := strconv.Unquote(v)
-					if err != nil {
-						t.Errorf("unable to unquote: %v", err)
-						continue
-					}
-					v = s
-				}
-				// Reconstruct groups:
-				ks := strings.Split(k, ".")
-				cur := m
-				for i, k := range ks {
-					if i == len(ks)-1 {
-						cur[k] = v
-						continue
-					}
-					n, ok := cur[k]
-					if !ok {
-						n = make(map[string]any)
-						cur[k] = n
-					}
-					cur = n.(map[string]any)
-				}
-			}
-			ms = append(ms, m)
+			ms = append(ms, parseProseRecord(t, line))
 		}
 		return ms
 	}
+}
+
+func parseProseRecord(t *testing.T, line []byte) map[string]any {
+	t.Helper()
+	m := make(map[string]any)
+	// Validations:
+	if len(line) == 0 {
+		return m
+	}
+	// Trim an optional newline. If parsing a buffer full of lines, the
+	// splitting function may do this for us.
+	if line[len(line)-1] == '\n' {
+		line = line[:len(line)-1]
+	}
+	if line[len(line)-1] != 0x1e {
+		t.Error("no ␞")
+		return m
+	}
+	line = line[:len(line)-1]
+
+	// Split into the fixed records and attrs:
+	rec, attr, ok := bytes.Cut(line, []byte{0x1d})
+	if !ok {
+		t.Error("no ␝")
+		return m
+	}
+
+	// Handle fixed records:
+	recs := bytes.FieldsFunc(rec, isUS)
+	var l slog.Level
+	if err := l.UnmarshalText(bytes.TrimSpace(recs[0])); err != nil {
+		t.Error(err)
+	}
+	m[slog.LevelKey] = l.String()
+	recs = recs[1:]
+	switch len(recs) {
+	case 3:
+		m[slog.SourceKey] = string(bytes.TrimSpace(recs[0]))
+		recs = recs[1:]
+		fallthrough
+	case 2:
+		s := string(bytes.TrimSpace(recs[0]))
+		// Can be a path or a timestamp. Exploit the fact that we know
+		// the time is in RFC3339 format and will not have path
+		// separators.
+		if strings.Contains(s, string(filepath.Separator)) {
+			m[slog.SourceKey] = s
+		} else {
+			v, err := time.Parse(time.RFC3339, s)
+			if err != nil {
+				t.Error(err)
+			}
+			m[slog.TimeKey] = v
+		}
+		recs = recs[1:]
+		fallthrough
+	case 1:
+		m[slog.MessageKey] = string(bytes.TrimSpace(recs[0]))
+	}
+
+	// Handle attrs:
+	for _, f := range bytes.FieldsFunc(attr, isUS) {
+		f = bytes.TrimSpace(f)
+		if len(f) == 0 {
+			continue
+		}
+		k, v, ok := strings.Cut(string(f), "=")
+		if !ok {
+			t.Errorf(`no "=": %+q`, string(f))
+			continue
+		}
+		if v[0] == '"' {
+			s, err := strconv.Unquote(v)
+			if err != nil {
+				t.Errorf("unable to unquote: %v", err)
+				continue
+			}
+			v = s
+		}
+		// Reconstruct groups:
+		ks := strings.Split(k, ".")
+		cur := m
+		for i, k := range ks {
+			if i == len(ks)-1 {
+				cur[k] = v
+				continue
+			}
+			n, ok := cur[k]
+			if !ok {
+				n = make(map[string]any)
+				cur[k] = n
+			}
+			cur = n.(map[string]any)
+		}
+	}
+
+	return m
 }
