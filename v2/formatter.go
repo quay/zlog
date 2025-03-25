@@ -46,3 +46,6 @@ type formatter[S state] struct {
 type state interface {
 	Reset(groups []string, prefmt *buffer)
 }
+
+// TODO(go1.24) Use the [encoding.TextAppender]/[encoding.BinaryAppender]
+// interfaces.

@@ -186,9 +186,9 @@ func levelToPriority(l slog.Level) (p byte) {
 
 // StateJournal is the state needed to construct a journal-format log message.
 type stateJournal struct {
+	prefmt *buffer
 	groups []string
 	prefix []byte
-	prefmt *buffer
 }
 
 // Reset implements state.
