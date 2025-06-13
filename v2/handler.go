@@ -77,6 +77,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/otel/baggage"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type (
@@ -295,6 +296,22 @@ func (h *handler[S]) Handle(ctx context.Context, r slog.Record) (err error) {
 	}
 	// "msg"
 	h.fmt.WriteMessage(b, s, r.Message)
+
+	// Extract trace and span IDs, if relevant.
+	//
+	// Key names are not configurable; they're the same ones the otel
+	// stdouttrace exporter uses.
+	if span := trace.SpanFromContext(ctx); span.IsRecording() {
+		sCtx := span.SpanContext()
+		if sCtx.HasTraceID() {
+			h.fmt.AppendKey(b, s, `TraceID`)
+			h.fmt.AppendString(b, s, sCtx.TraceID().String())
+		}
+		if sCtx.HasSpanID() {
+			h.fmt.AppendKey(b, s, `SpanID`)
+			h.fmt.AppendString(b, s, sCtx.SpanID().String())
+		}
+	}
 
 	// Add baggage if filter function is present.
 	if f := h.opts.Baggage; f != nil {
