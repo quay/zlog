@@ -17,7 +17,7 @@ type formatter[S state] struct {
 
 	// Lifecycle hooks:
 	Start func(*buffer, S)
-	End   func(*buffer, S)
+	End   func(*buffer, S, int) // should be called with number of attrs used for this message
 
 	// Writing hooks:
 	AppendKey      func(*buffer, S, string)

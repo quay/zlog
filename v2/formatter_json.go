@@ -22,8 +22,8 @@ var formatterJSON = formatter[*stateJSON]{
 	Start: func(b *buffer, s *stateJSON) {
 		b.WriteByte('{')
 	},
-	End: func(b *buffer, s *stateJSON) {
-		if !s.wroteAttr {
+	End: func(b *buffer, s *stateJSON, n int) {
+		if n == 0 {
 			// If there are no attrs, the handler needs to make sure no empty
 			// groups are written.
 			for len(*b) > 0 {
@@ -43,8 +43,19 @@ var formatterJSON = formatter[*stateJSON]{
 		} else {
 			b.WriteByte('}')
 		}
-		for i := s.groups; i > 0; i-- {
-			b.WriteByte('}')
+		if s.groups != 0 {
+			var open int
+			for _, v := range *b {
+				switch v {
+				case '{':
+					open++
+				case '}':
+					open--
+				}
+			}
+			for i := open; i > 0; i-- {
+				b.WriteByte('}')
+			}
 		}
 		b.WriteByte('\n')
 	},

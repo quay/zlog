@@ -20,7 +20,7 @@ var formatterJournal = formatter[*stateJournal]{
 	BaggageKey: "BAGGAGE",
 
 	Start: func(b *buffer, s *stateJournal) {},
-	End:   func(b *buffer, s *stateJournal) {},
+	End:   func(b *buffer, s *stateJournal, n int) {},
 
 	WriteSource: func(b *buffer, s *stateJournal, f *runtime.Frame) {
 		if f := f.File; f != "" {

@@ -362,7 +362,7 @@ func (h *handler[S]) Handle(ctx context.Context, r slog.Record) (err error) {
 	})
 
 	// Finish and send.
-	h.fmt.End(b, s)
+	h.fmt.End(b, s, r.NumAttrs())
 	var n int
 	n, err = h.out.Write(*b)
 	if n != len(*b) && errors.Is(err, nil) {

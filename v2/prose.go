@@ -47,7 +47,7 @@ func proseHandler(w io.Writer, opts *Options) *handler[*stateJournal] {
 		PprofKey:   "goroutine",
 		BaggageKey: "baggage",
 		Start:      func(b *buffer, s *stateJournal) {},
-		End: func(b *buffer, s *stateJournal) {
+		End: func(b *buffer, s *stateJournal, n int) {
 			b.Unwrite()
 			b.Write([]byte("\x1e\n"))
 		},
