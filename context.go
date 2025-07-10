@@ -2,48 +2,54 @@ package zlog
 
 import (
 	"context"
-	"fmt"
 	"regexp"
-	"strconv"
+	"strings"
+	"unicode/utf8"
 
 	"go.opentelemetry.io/otel/baggage"
 )
 
 // NeedEscape matches a string that needs to be escaped either into an ASCII or a percent-encoded representation.
-var needEscape = regexp.MustCompile(`%(?:$|([0-9a-fA-F]?[^0-9a-fA-F]))|[^\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]`)
+var needEscape = regexp.MustCompile(`%(?:$|([0-9a-fA-F]?[^0-9a-fA-F]))|[^\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]|[\x80-\x{10FFFF}]`)
 
 // PctEncode matches a string that requires some characters to be percent-encoded.
-var pctEncode = regexp.MustCompile(`%(?:$|([0-9a-fA-F][^0-9a-fA-F])|[^0-9a-fA-F])| |"|,|;|\\`)
+var pctEncode = regexp.MustCompile(`%(?:$|([0-9a-fA-F][^0-9a-fA-F])|[^0-9a-fA-F])|[^\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]+|[\x80-\x{10FFFF}]+`)
+
+// EscapeOne is the set of 1-byte utf8 characters that should be percent encoded.
+//
+// This could be avoided if the [pctEncode] regexp was made robust enough to
+// ignore correct hex escapes and only capture "lone" percent symbols.
+var escapeOne = regexp.MustCompile(`[^\x21\x23-\x2B\x2D-\x3A\x3C-\x5B\x5D-\x7E]|%| |"|,|;|\\`)
 
 func escapeValue(v string) string {
-	v = pctEncode.ReplaceAllStringFunc(v, func(m string) (r string) {
-		for _, c := range m {
-			switch c {
-			case '%':
-				r += "%25"
-			case ' ':
-				r += "%20"
-			case '"':
-				r += "%22"
-			case ',':
-				r += "%2C"
-			case ';':
-				r += "%3B"
-			case '\\':
-				r += "%5C"
-			default:
-				// Just copy to the return value.
-				// This is (hopefully) just picking up the positions where percent-encoded nybbles would be.
-				r += string(c)
+	const hexchar = `0123456789ABCDEF`
+	var b strings.Builder
+	b.Grow(4 * 3)
+	return pctEncode.ReplaceAllStringFunc(v, func(v string) string {
+		b.Reset()
+		for _, c := range v {
+			n := utf8.RuneLen(c)
+			if n == 1 {
+				c := byte(c)
+				if escapeOne.Match([]byte{c}) {
+					b.WriteRune('%')
+					b.WriteByte(hexchar[c>>4])
+					b.WriteByte(hexchar[c&15])
+				} else {
+					b.WriteByte(c)
+				}
+				continue
+			}
+			p := make([]byte, n)
+			utf8.EncodeRune(p, c)
+			for _, c := range p {
+				b.WriteRune('%')
+				b.WriteByte(hexchar[c>>4])
+				b.WriteByte(hexchar[c&15])
 			}
 		}
-		if len(m) == len(r) {
-			panic(fmt.Sprintf("programmer error: pulled odd string %q", m))
-		}
-		return r
+		return b.String()
 	})
-	v = strconv.QuoteToASCII(v)
-	return v[1 : len(v)-1]
 }
 
 // ContextWithValues is a helper for the go.opentelemetry.io/otel/baggage v1

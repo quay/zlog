@@ -29,6 +29,7 @@ func TestEscape(t *testing.T) {
 			{",", true},
 			{";", true},
 			{"\\", true},
+			{"\n", true},
 		}
 		for _, tc := range tt {
 			if got, want := needEscape.MatchString(tc.In), tc.Want; got != want {
@@ -41,13 +42,14 @@ func TestEscape(t *testing.T) {
 			In   string
 			Want string
 		}{
-			{`"🆒"`, `%22\U0001f192%22`},
+			{`"🆒"`, `%22%F0%9F%86%92%22`},
 			{`https://example.com?data=%70%62%73%73%77%6F%72%64&a=b`, `https://example.com?data=%70%62%73%73%77%6F%72%64&a=b`},
 			{`20% done`, `20%25%20done`},
 			{`%9Z`, `%259Z`},
 			{`\n`, `%5Cn`},
 			{`,`, `%2C`},
 			{`;`, `%3B`},
+			{"\n", `%0A`},
 		}
 		for _, tc := range tt {
 			if got, want := escapeValue(tc.In), tc.Want; got != want {
