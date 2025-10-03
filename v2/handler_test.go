@@ -210,7 +210,7 @@ func init() {
 
 func exerciseFormatter(t *testing.T, h slog.Handler) {
 	t.Helper()
-	ctx := WithLevel(context.Background(), slog.LevelDebug)
+	ctx := context.Background()
 	log := slog.New(h)
 	for _, l := range exerciseLevels {
 		for _, c := range exerciseCalls {
@@ -242,11 +242,14 @@ func TestExercise(t *testing.T) {
 		}
 		lines = append(lines, cur)
 	}
+	opts := Options{
+		Level: LevelEverything,
+	}
 
 	// Generate all the lines:
 	t.Run("JSON", func(t *testing.T) {
 		var buf bytes.Buffer
-		h := NewHandler(&buf, nil)
+		h := NewHandler(&buf, &opts)
 		exerciseFormatter(t, h)
 		splitBuf(buf.Bytes())
 	})
@@ -258,7 +261,7 @@ func TestExercise(t *testing.T) {
 		emu.Capture(&out)
 		h := &handler[*stateJournal]{
 			out:  emu,
-			opts: &Options{},
+			opts: &opts,
 			fmt:  &formatterJournal,
 			pool: getPool[*stateJournal](),
 		}
@@ -267,12 +270,14 @@ func TestExercise(t *testing.T) {
 	})
 	t.Run("Prose", func(t *testing.T) {
 		var buf bytes.Buffer
-		h := proseHandler(&buf, &Options{})
+		h := proseHandler(&buf, &opts)
 		exerciseFormatter(t, h)
 		splitBuf(buf.Bytes())
 		t.Run("Color", func(t *testing.T) {
 			var buf bytes.Buffer
-			h := proseHandler(&buf, &Options{forceANSI: true})
+			opts := opts
+			opts.forceANSI = true
+			h := proseHandler(&buf, &opts)
 			exerciseFormatter(t, h)
 			splitBuf(buf.Bytes())
 		})

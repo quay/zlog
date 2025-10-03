@@ -160,6 +160,7 @@ var expected = []journalMsg{
 func emitJournaldLogs(t *testing.T) {
 	t.Log("hello from inside systemd-run")
 	h := NewHandler(os.Stderr, &Options{
+		Level:      LevelEverything,
 		OmitTime:   true,
 		OmitSource: true,
 	})
@@ -173,7 +174,7 @@ func emitJournaldLogs(t *testing.T) {
 	exerciseFormatter(t, h)
 	// Sweep the syslog priorities:
 	pri := slog.New(h).With("TEST_PRIORITY", true)
-	ctx := WithLevel(context.Background(), LevelEverything)
+	ctx := context.Background()
 	for i := int64(-8); i < 21; i++ {
 		pri.Log(ctx, slog.Level(i), "test", "SLOG_LEVEL", i)
 	}
