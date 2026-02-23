@@ -125,12 +125,9 @@ type handler[S state] struct {
 // On Linux systems, the journald native protocol will be used if the process is
 // launched with the appropriate environment variables and the passed
 // [io.Writer] is [os.Stderr].
-// The default for a process running inside a Kubernetes container or as systemd
-// service is to not emit timestamps.
 func NewHandler(w io.Writer, opts *Options) slog.Handler {
 	if opts == nil {
-		opts = &Options{}
-		opts.OmitTime = inK8s() || journalStream()
+		opts = NewOptions()
 	}
 	if h, ok := tryJournal(w, opts); ok {
 		return h
@@ -187,6 +184,17 @@ type Options struct {
 
 	// ForceANSI is a hook for testing to force ANSI color output.
 	forceANSI bool
+}
+
+// NewOptions returns a default [Options] value.
+//
+// The default is not necessarily the zero value.
+// The default for a process running inside a Kubernetes container or as systemd
+// service is to not emit timestamps.
+func NewOptions() *Options {
+	return &Options{
+		OmitTime: inK8s() || journalStream(),
+	}
 }
 
 // Enabled implements [slog.Handler].
