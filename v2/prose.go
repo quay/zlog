@@ -24,7 +24,7 @@ const DefaultProseColors = `31:33:32:3:96:93::36::1;32:1;31:1;33:32:95:33:4:34:3
 func proseHandler(w io.Writer, opts *Options) *handler[*stateJournal] {
 	var p *ansiPrinter
 	// Populate "p" if the configuration seems to support it.
-	if opts.forceANSI || (len(os.Getenv("NO_COLOR")) != 0 && isatty(w)) {
+	if opts.forceANSI || (len(os.Getenv("NO_COLOR")) == 0 && isatty(w)) {
 		v := DefaultProseColors
 		if z, ok := os.LookupEnv(`ZLOG_COLORS`); ok {
 			// Scrub the string from the environment for disallowed runes.
