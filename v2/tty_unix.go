@@ -1,4 +1,4 @@
-//go:build unix && !linux
+//go:build unix
 
 package zlog
 
@@ -15,6 +15,6 @@ func isatty(w io.Writer) bool {
 		return false
 	}
 	fd := int(f.Fd())
-	_, err := unix.IoctlGetTermios(fd, unix.TCGETS)
+	_, err := unix.IoctlGetWinsize(fd, unix.TIOCGWINSZ)
 	return err == nil
 }
