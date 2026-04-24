@@ -7,11 +7,11 @@ import (
 	"log/slog"
 )
 
-// TryJournald checks if the journal protocol should be used, and returns a
+// TryJournal checks if the journal protocol should be used, and returns a
 // handler and whether it should be used.
 //
 // On this platform, this function will always report false.
-func tryJournald(_ io.Writer, _ *Options) (slog.Handler, bool) {
+func tryJournal(_ io.Writer, _ *Options) (slog.Handler, bool) {
 	return nil, false
 }
 

@@ -102,7 +102,7 @@ var (
 	})
 )
 
-// TryJournald checks if the journal protocol should be used, and returns a
+// TryJournal checks if the journal protocol should be used, and returns a
 // handler and whether it should be used.
 func tryJournal(w io.Writer, opts *Options) (slog.Handler, bool) {
 	if !journalStream() {
